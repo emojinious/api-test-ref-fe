@@ -15,13 +15,11 @@ export function connectToSocket(token, playerId, sessionId, onConnectSuccess) {
     stompClient.connect(headers, function(frame) {
       console.log('Connected: ' + frame);
       
-      // 연결 확인 메시지 전송
-      stompClient.send("/app/connect", {}, JSON.stringify({playerId: playerId, token: token}));
 
       stompClient.subscribe('/user/queue/connect-ack', function(message) {
         if (message.body === "Connected successfully") {
           console.log("Connection acknowledged by server");
-          subscribeToGameTopics(sessionId);
+          //subscribeToGameTopics(sessionId);
           joinGame(sessionId);
           if (onConnectSuccess) {
             onConnectSuccess();
@@ -32,6 +30,10 @@ export function connectToSocket(token, playerId, sessionId, onConnectSuccess) {
           reject(new Error("Connection failed"));
         }
       });
+
+      // 연결 확인 메시지 전송
+      stompClient.send("/app/connect", {}, JSON.stringify({playerId: playerId, token: token}));
+
     }, function(error) {
       console.error('STOMP connection error:', error);
       reject(error);
