@@ -19,7 +19,7 @@ export function connectToSocket(token, playerId, sessionId, onConnectSuccess) {
       stompClient.subscribe('/user/queue/connect-ack', function(message) {
         if (message.body === "Connected successfully") {
           console.log("Connection acknowledged by server");
-          //subscribeToGameTopics(sessionId);
+          subscribeToGameTopics(sessionId);
           joinGame(sessionId);
           if (onConnectSuccess) {
             onConnectSuccess();

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { connectToSocket, sendChatMessage, disconnect, startGame, submitPrompt, submitGuess } from '../utils/socket';
 import Chat from './Chat';
@@ -20,90 +20,90 @@ function GameLobby() {
   const [remainingTime, setRemainingTime] = useState(0);
   const [submissionProgress, setSubmissionProgress] = useState({ submitted: 0, total: 0 });
   const [message, setMessage] = useState('');
+
   const stompClientRef = useRef(null);
+  const isConnectedRef = useRef(false);
 
-  const updateTimer = useCallback(() => {
-    if (remainingTime > 0) {
-      setRemainingTime(prevTime => prevTime - 1);
-    }
-  }, [remainingTime]);
+  const connectAndSubscribe = useCallback(async () => {
+    if (isConnectedRef.current) return;
 
-  useEffect(() => {
-    const timerInterval = setInterval(updateTimer, 1000);
-    return () => clearInterval(timerInterval);
-  }, [updateTimer]);
-
-  useEffect(() => {
     const playerId = localStorage.getItem('playerId');
     const token = localStorage.getItem('token');
-    const storedSessionId = localStorage.getItem('sessionId');
 
+    try {
+      stompClientRef.current = await connectToSocket(token, playerId, sessionId, () => {
+        console.log('Successfully connected and joined the game');
+      });
+
+      const subscriptions = [
+        { topic: `/topic/game/${sessionId}`, callback: handleGameState },
+        { topic: `/topic/game/${sessionId}/chat`, callback: handleChatMessage },
+        { topic: `/user/queue/game/${sessionId}`, callback: handlePersonalMessage },
+        { topic: `/topic/game/${sessionId}/progress`, callback: handleProgress },
+        { topic: `/topic/game/${sessionId}/phase`, callback: handlePhase },
+      ];
+
+      subscriptions.forEach(({ topic, callback }) => {
+        stompClientRef.current.subscribe(topic, callback);
+      });
+
+      isConnectedRef.current = true;
+      setConnectionError(null);
+    } catch (error) {
+      console.error('Failed to connect:', error);
+      setConnectionError('Failed to connect to the game server. Please try again.');
+    }
+  }, [sessionId]);
+
+  const handleGameState = useCallback((gameState) => {
+    const newGameState = JSON.parse(gameState.body);
+    setGameState(newGameState);
+    const playerId = localStorage.getItem('playerId');
+    setIsHost(newGameState.players.find(p => p.id === playerId)?.isHost || false);
+    setRemainingTime(Math.floor(newGameState.remainingTime / 1000));
+  }, []);
+
+  const handleChatMessage = useCallback((chatMessage) => {
+    const newChatMessage = JSON.parse(chatMessage.body);
+    setChatMessages(prevMessages => [...prevMessages, newChatMessage]);
+  }, []);
+
+  const handlePersonalMessage = useCallback((message) => {
+    alert(message);
+    const data = JSON.parse(message.body);
+    if (data.type === 'keyword') {
+      setCurrentKeyword(data.data);
+    } else if (data.type === 'image') {
+      setCurrentImage(data.data);
+    }
+  }, []);
+
+  const handleProgress = useCallback((progress) => {
+    const newProgress = JSON.parse(progress.body);
+    setSubmissionProgress(newProgress);
+  }, []);
+
+  const handlePhase = useCallback((phaseMessage) => {
+    const phaseData = JSON.parse(phaseMessage.body);
+    setMessage(phaseData.message);
+  }, []);
+
+  useEffect(() => {
+    const storedSessionId = localStorage.getItem('sessionId');
     if (sessionId !== storedSessionId) {
       navigate('/');
       return;
     }
-
-    const connectAndSubscribe = async () => {
-      try {
-        if (stompClientRef.current) {
-          await stompClientRef.current.deactivate();
-        }
-
-        stompClientRef.current = await connectToSocket(token, playerId, sessionId, () => {
-          console.log('Successfully connected and joined the game');
-        });
-
-        stompClientRef.current.subscribe(`/topic/game/${sessionId}`, function(gameState) {
-          const newGameState = JSON.parse(gameState.body);
-          console.log('Received game state:', newGameState);
-          setGameState(newGameState);
-          setIsHost(newGameState.players.find(p => p.id === playerId)?.isHost || false);
-          setRemainingTime(Math.floor(newGameState.remainingTime / 1000));
-        });
-
-        stompClientRef.current.subscribe(`/topic/game/${sessionId}/chat`, function(chatMessage) {
-          const newChatMessage = JSON.parse(chatMessage.body);
-          console.log('Received chat message:', newChatMessage);
-          setChatMessages(prevMessages => [...prevMessages, newChatMessage]);
-        });
-
-        stompClientRef.current.subscribe(`/user/queue/game/${sessionId}`, function(message) {
-          const data = JSON.parse(message.body);
-          console.log('Received personal message:', data);
-          if (data.type === 'keyword') {
-            setCurrentKeyword(data.data);
-          } else if (data.type === 'image') {
-            setCurrentImage(data.data);
-          }
-        });
-
-        stompClientRef.current.subscribe(`/topic/game/${sessionId}/progress`, function(progress) {
-          const newProgress = JSON.parse(progress.body);
-          console.log('Received submission progress:', newProgress);
-          setSubmissionProgress(newProgress);
-        });
-
-        stompClientRef.current.subscribe(`/topic/game/${sessionId}/phase`, function(phaseMessage) {
-          const phaseData = JSON.parse(phaseMessage.body);
-          console.log('Received phase message:', phaseData);
-          setMessage(phaseData.message);
-        });
-
-        setConnectionError(null);
-      } catch (error) {
-        console.error('Failed to connect:', error);
-        setConnectionError('Failed to connect to the game server. Please try again.');
-      }
-    };
 
     connectAndSubscribe();
 
     return () => {
       if (stompClientRef.current) {
         disconnect(stompClientRef.current);
+        isConnectedRef.current = false;
       }
     };
-  }, [sessionId, navigate]);
+  }, [sessionId, navigate, connectAndSubscribe]);
 
   const handleUpdateGameSettings = async (settings) => {
     try {
