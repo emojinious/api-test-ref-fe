@@ -23,6 +23,7 @@ function GameLobby() {
 
   const stompClientRef = useRef(null);
   const isConnectedRef = useRef(false);
+  const timerRef = useRef(null);
 
   const connectAndSubscribe = useCallback(async () => {
     if (isConnectedRef.current) return;
@@ -61,6 +62,22 @@ function GameLobby() {
     const playerId = localStorage.getItem('playerId');
     setIsHost(newGameState.players.find(p => p.id === playerId)?.isHost || false);
     setRemainingTime(Math.floor(newGameState.remainingTime / 1000));
+
+    // Clear existing timer
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+
+    // Start new timer
+    timerRef.current = setInterval(() => {
+      setRemainingTime((prevTime) => {
+        if (prevTime <= 0) {
+          clearInterval(timerRef.current);
+          return 0;
+        }
+        return prevTime - 1;
+      });
+    }, 1000);
   }, []);
 
   const handleChatMessage = useCallback((chatMessage) => {
@@ -69,7 +86,6 @@ function GameLobby() {
   }, []);
 
   const handlePersonalMessage = useCallback((message) => {
-    alert(message);
     const data = JSON.parse(message.body);
     if (data.type === 'keyword') {
       setCurrentKeyword(data.data);
@@ -101,6 +117,9 @@ function GameLobby() {
       if (stompClientRef.current) {
         disconnect(stompClientRef.current);
         isConnectedRef.current = false;
+      }
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
       }
     };
   }, [sessionId, navigate, connectAndSubscribe]);
@@ -141,7 +160,6 @@ function GameLobby() {
   const copyInviteLink = () => {
     const inviteLink = generateInviteLink();
     navigator.clipboard.writeText(inviteLink).then(() => {
-      alert('Invite link copied to clipboard!');
     }).catch(err => {
       console.error('Failed to copy invite link: ', err);
     });
@@ -164,7 +182,7 @@ function GameLobby() {
             <h3>Game in Progress</h3>
             <p>Current Turn: {gameState.currentTurn}</p>
             <p>Current Phase: {
-              ['Waiting', 'Description', 'Generation', 'Guessing', 'Result'][gameState.currentPhase]
+              ['Waiting', 'Loading', 'Description', 'Generation', 'Checking', 'Guessing', 'Turn Result', 'Result'][gameState.currentPhase]
             }</p>
             <p>Remaining Time: {remainingTime} seconds</p>
             <p>Submission Progress: {submissionProgress.submitted}/{submissionProgress.total}</p>
@@ -185,7 +203,9 @@ function GameLobby() {
 
   const renderPhaseContent = () => {
     switch (gameState.currentPhase) {
-      case 1: // Description phase
+      case 1: // Loading phase
+        return <p>Server is generating keywords...</p>;
+      case 2: // Description phase
         return (
           <div>
             <p>Your Keyword: {currentKeyword}</p>
@@ -193,17 +213,25 @@ function GameLobby() {
               type="text"
               value={currentPrompt}
               onChange={(e) => setCurrentPrompt(e.target.value)}
-              placeholder="Enter your prompt"
+              placeholder="Describe your keyword"
             />
-            <button onClick={handleSubmitPrompt}>Submit Prompt</button>
+            <button onClick={handleSubmitPrompt}>Submit Description</button>
           </div>
         );
-      case 2: // Generation phase
-        return <p>Generating images...</p>;
-      case 3: // Guessing phase
+      case 3: // Generation phase
+        return <p>Server is generating images based on descriptions...</p>;
+      case 4: // Checking phase
         return (
           <div>
+            <p>Check your generated image:</p>
             {currentImage && <img src={currentImage} alt="Generated" style={{maxWidth: '300px'}} />}
+          </div>
+        );
+      case 5: // Guessing phase
+        return (
+          <div>
+            <p>Guess the keyword for this image:</p>
+            {currentImage && <img src={currentImage} alt="To guess" style={{maxWidth: '300px'}} />}
             <input
               type="text"
               value={currentGuess}
