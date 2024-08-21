@@ -5,7 +5,7 @@ let stompClient = null;
 
 export function connectToSocket(token, playerId, sessionId, onConnectSuccess) {
   return new Promise((resolve, reject) => {
-    const socket = new SockJS('http://localhost:8080/ws');
+    const socket = new SockJS('http://yhcho.ddns.net:8081/ws');
     stompClient = Stomp.over(socket);
 
     const headers = {

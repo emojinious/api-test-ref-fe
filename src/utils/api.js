@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:8080/api';
+const API_BASE_URL = 'http://yhcho.ddns.net:8081/api';
 
 export async function createPlayer(nickname, characterId, sessionId = null) {
   const url = sessionId
